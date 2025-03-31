@@ -51,8 +51,11 @@ found_index_name_text = os.getenv('FOUND_INDEX_NAME_TEXT')
 lost_index_name_img = os.getenv('LOST_INDEX_NAME_IMG')
 found_index_name_img = os.getenv('FOUND_INDEX_NAME_IMG')
 
+my_pinecone_indexes = pinecone_ref.list_indexes()
 
-if lost_index_name_text not in pinecone_ref.list_indexes():
+my_pinecone_indexes_names = [index["name"] for index in my_pinecone_indexes]
+
+if lost_index_name_text not in my_pinecone_indexes_names:
     pinecone_ref.create_index(
         name=lost_index_name_text,
         dimension=384,  # Set according to your embedding model
@@ -60,7 +63,7 @@ if lost_index_name_text not in pinecone_ref.list_indexes():
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
 
-if found_index_name_text not in pinecone_ref.list_indexes():
+if found_index_name_text not in my_pinecone_indexes_names:
     pinecone_ref.create_index(
         name=found_index_name_text,
         dimension=384,  # Set according to your embedding model
@@ -68,7 +71,7 @@ if found_index_name_text not in pinecone_ref.list_indexes():
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
 
-if lost_index_name_img not in pinecone_ref.list_indexes():
+if lost_index_name_img not in my_pinecone_indexes_names:
     pinecone_ref.create_index(
         name=lost_index_name_img,
         dimension=768,  # Set according to your embedding model
@@ -76,7 +79,7 @@ if lost_index_name_img not in pinecone_ref.list_indexes():
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
 
-if found_index_name_img not in pinecone_ref.list_indexes():
+if found_index_name_img not in my_pinecone_indexes_names:
     pinecone_ref.create_index(
         name=found_index_name_img,
         dimension=768,  # Set according to your embedding model
