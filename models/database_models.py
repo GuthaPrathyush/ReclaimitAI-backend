@@ -2,14 +2,13 @@ from pydantic import BaseModel
 from typing import Optional
 
 class User(BaseModel):
-    _id: Optional[str] = ""
     name: str
     mail: str
     phone: str
-    socket_id: str
+    password: str
+    socket_id: Optional[str] = ""
 
 class Item(BaseModel):
-    _id: Optional[str] = ""
     owner_id: Optional[str] = ""
     name: str
     state: bool # True for lost, False for found

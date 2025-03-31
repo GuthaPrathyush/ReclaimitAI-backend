@@ -5,8 +5,11 @@ websockets
 pinecone~=6.0.2
 sentence-transformers~=4.0.1
 transformers
-motor
+motor~=3.7.0
 torch
 pillow
 python-dotenv~=1.0.1
 pydantic~=2.10.6
+pyjwt
+bcrypt~=4.3.0
+pymongo~=4.11.3
