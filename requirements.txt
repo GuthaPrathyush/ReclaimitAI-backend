@@ -1,0 +1,12 @@
+fastapi~=0.115.12
+uvicorn~=0.34.0
+python-socketio~=5.12.1
+websockets
+pinecone~=6.0.2
+sentence-transformers~=4.0.1
+transformers
+motor
+torch
+pillow
+python-dotenv~=1.0.1
+pydantic~=2.10.6
