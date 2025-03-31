@@ -92,16 +92,16 @@ found_index_img_ref = pinecone_ref.Index(found_index_name_img)
 #querying
 
 def query_lost_item_description_in_pinecone_database(vector_embedding):
-    lost_index_text_ref.query(vector=vector_embedding, top_k=5)
+    return lost_index_text_ref.query(vector=vector_embedding, top_k=5)
 
 def query_found_item_description_in_pinecone_database(vector_embedding):
-    found_index_text_ref.query(vector=vector_embedding, top_k=5)
+    return found_index_text_ref.query(vector=vector_embedding, top_k=5)
 
 def query_lost_item_image_in_pinecone_database(vector_embedding):
-    lost_index_img_ref.query(vector=vector_embedding, top_k=5)
+    return lost_index_img_ref.query(vector=vector_embedding, top_k=5)
 
 def query_found_item_image_in_pinecone_database(vector_embedding):
-    found_index_img_ref.query(vector=vector_embedding, top_k=5)
+    return found_index_img_ref.query(vector=vector_embedding, top_k=5)
 
 #upserting
 

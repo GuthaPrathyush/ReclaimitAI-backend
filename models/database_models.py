@@ -6,6 +6,7 @@ class User(BaseModel):
     name: str
     mail: str
     phone: str
+    socket_id: str
 
 class Item(BaseModel):
     _id: Optional[str] = ""
