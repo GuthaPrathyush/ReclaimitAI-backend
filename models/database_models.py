@@ -8,9 +8,13 @@ class User(BaseModel):
     password: str
     socket_id: Optional[str] = ""
 
+class LoginUser(BaseModel):
+    mail: str
+    password: str
+
 class Item(BaseModel):
     owner_id: Optional[str] = ""
     name: str
     state: bool # True for lost, False for found
     description: str
-    image: str
+    image: Optional[str] = ""

@@ -17,8 +17,18 @@ sio_app = socketio.ASGIApp(
 
 @socket_server.event
 async def connect(sid, environ, auth):
-    print(f'{sid} connected')
+    auth_token = auth['auth_token']
+    print(f'{auth_token} connected as {sid}')
 
 @socket_server.event
 async def disconnect(sid):
     print(f'{sid} disconnected')
+
+@socket_server.event
+async def ping(sid, data):
+    try:
+        await socket_server.emit('pong', {"message": "Helloo"}, room=sid)
+    except Exception as e:
+        print('Connection lost!')
+
+
