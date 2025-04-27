@@ -791,6 +791,7 @@ async def get_user_profile(request: Request, response: Response):
 
 
 if __name__ == '__main__':
-    uvicorn.run('main:app', reload=True)
+    PORT = int(os.getenv('PORT')) or 10000
+    uvicorn.run(app, host='0.0.0.0', PORT=PORT)
 
 
