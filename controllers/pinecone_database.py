@@ -1,43 +1,8 @@
+import jwt
 from dotenv import load_dotenv, find_dotenv
-from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 import os
-from datetime import datetime, timezone
-
-#**********************text_embedding************************
-# from sentence_transformers import SentenceTransformer
-# model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-# text = "A black Adidas backpack with zippers."
-#
-# embedding = model.encode(text)
-#
-# print(embedding.shape)  # Output: (384,)
-# print(embedding)
-
-#**********************IMAGE embedding***************************
-# from transformers import ViTImageProcessor, ViTModel
-# from PIL import Image
-# import torch
-#
-# # Load Model & Image Processor
-# model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
-# image_processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
-#
-# # Load Image and Convert to RGB
-# image = Image.open("image.png").convert("RGB")  # Ensure RGB mode
-#
-# # Process Image (Wrap in a List)
-# inputs = image_processor(images=[image], return_tensors="pt")  # List format required
-#
-# # Extract Image Embedding
-# with torch.no_grad():
-#     outputs = model(**inputs)
-#
-# # Use CLS token as the image embedding (1, 768)
-# image_embedding = outputs.last_hidden_state[:, 0, :]
-#
-# print(image_embedding.shape)  # Expected Output: (1, 768)
-# print(image_embedding)
+from bson import ObjectId
 
 
 env_path = find_dotenv() or find_dotenv('../.env')
@@ -134,3 +99,33 @@ def delete_lost_item_image_in_pinecone_database(post_id):
 def delete_found_item_image_in_pinecone_database(post_id):
     found_index_img_ref.delete(ids=[post_id])
 
+
+def get_matched_lost_items_id(text_embedding, image_embedding):
+    res = set()
+
+    matched_lost_text = query_lost_item_description_in_pinecone_database(text_embedding)
+    matched_lost_text_list = matched_lost_text.get('matches', [])
+    for match in matched_lost_text_list:
+        res.add(match['id'])
+
+    matched_lost_image = query_lost_item_image_in_pinecone_database(image_embedding)
+    matched_lost_image_list = matched_lost_image.get('matches', [])
+    for match in matched_lost_image_list:
+        res.add(match['id'])
+
+    return list(res)
+
+def get_matched_found_items_id(text_embedding, image_embedding):
+    res = set()
+
+    matched_found_text = query_found_item_description_in_pinecone_database(text_embedding)
+    matched_found_text_list = matched_found_text.get('matches', [])
+    for match in matched_found_text_list:
+        res.add(match)
+
+    matched_found_image = query_found_item_image_in_pinecone_database(image_embedding)
+    matched_found_image_list = matched_found_image.get('matches', [])
+    for match in matched_found_image_list:
+        res.add(match)
+
+    return list(res)

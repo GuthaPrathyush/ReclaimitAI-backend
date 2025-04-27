@@ -2,7 +2,6 @@ from transformers import ViTImageProcessor, ViTModel
 from sentence_transformers import SentenceTransformer
 from PIL import Image
 import torch
-from fastapi import UploadFile
 import io
 
 # Load Model & Processor once globally (optional for performance)
@@ -12,9 +11,8 @@ image_processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224
 # Load model once globally (for performance)
 text_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
-async def get_image_embedding(file: UploadFile):
-    # Read image bytes from UploadFile
-    image_bytes = await file.read()
+async def get_image_embedding(image_bytes: bytes):
+
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
     # Process image
@@ -31,4 +29,4 @@ async def get_image_embedding(file: UploadFile):
 
 async def get_text_embedding(text: str):
     embedding = text_model.encode(text)
-    return embedding
+    return embedding.squeeze().tolist()

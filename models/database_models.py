@@ -13,8 +13,9 @@ class LoginUser(BaseModel):
     password: str
 
 class Item(BaseModel):
-    owner_id: Optional[str] = ""
+    owner_mail: Optional[str] = ""
     name: str
     state: bool # True for lost, False for found
     description: str
     image: Optional[str] = ""
+    upload_date: int
