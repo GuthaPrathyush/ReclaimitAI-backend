@@ -1,13 +1,7 @@
 import jwt
-from dotenv import load_dotenv, find_dotenv
 from pinecone import Pinecone, ServerlessSpec
 import os
 from bson import ObjectId
-
-
-env_path = find_dotenv() or find_dotenv('../.env')
-
-load_dotenv(env_path)
 
 pinecone_ref = Pinecone(api_key=os.getenv('PINECONE_API'))
 
