@@ -4,6 +4,7 @@ load_dotenv()
 
 import base64
 import re
+import requests
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import smtplib
@@ -211,18 +212,81 @@ async def login(request: Request, user:LoginUser, response: Response):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Inernal server error, please try again later!"}
 
+class TokenUpdate(BaseModel):
+    token: str
 
-@app.post('/upload')
-async def upload(request: Request, response: Response, name: str = Form(...), state: bool = Form(...), description: str = Form(...), timestamp: int = Form(...), image: UploadFile = File(...)):
+
+
+@app.post('/update-fcm-token')
+async def update_fcm_token(request: Request, response: Response, token_update: TokenUpdate):
     req_headers = dict(request.headers)
-    if 'auth_token' not in req_headers :
+    if 'auth_token' not in req_headers:
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "Unauthorized Access!"}
 
     auth_token = req_headers['auth_token']
     try:
         data = jwt.decode(auth_token, os.getenv('JWT_KEY'), algorithms=["HS256"])
+    except Exception:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {"message": "Unauthorized access!"}
+
+    try:
+        # Update only the socket_id field for the current user
+        result = await users.update_one(
+            {'_id': ObjectId(data['_id'])},
+            {'$set': {'socket_id': token_update.token}}
+        )
+        if result.modified_count == 0:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            return {"message": "User not found or token unchanged"}
+        return {"message": "Push token updated successfully"}
     except Exception as e:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": f"Internal server error: {str(e)}"}
+
+
+
+import requests
+
+def send_expo_push_notification(expo_push_token, title, body, data=None):
+    """
+    Send a push notification via Expo Push API.
+    """
+    message = {
+        "to": expo_push_token,
+        "sound": "default",
+        "title": title,
+        "body": body,
+        "data": data or {},
+    }
+    response = requests.post(
+        "https://exp.host/--/api/v2/push/send",
+        json=message,
+        headers={
+            "Accept": "application/json",
+            "Accept-encoding": "gzip, deflate",
+            "Content-Type": "application/json",
+        },
+        timeout=10
+    )
+    try:
+        response.raise_for_status()
+        return {"success": True, "response": response.json()}
+    except Exception as e:
+        return {"success": False, "error": str(e), "response": response.text}
+
+@app.post('/upload')
+async def upload(request: Request, response: Response, name: str = Form(...), state: bool = Form(...), description: str = Form(...), timestamp: int = Form(...), image: UploadFile = File(...)):
+    req_headers = dict(request.headers)
+    if 'auth_token' not in req_headers:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "Unauthorized Access!"}
+
+    auth_token = req_headers['auth_token']
+    try:
+        data = jwt.decode(auth_token, os.getenv('JWT_KEY'), algorithms=["HS256"])
+    except Exception:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return {"message": "Unauthorized access!"}
 
@@ -231,32 +295,38 @@ async def upload(request: Request, response: Response, name: str = Form(...), st
         if existing_user is None:
             response.status_code = status.HTTP_401_UNAUTHORIZED
             return {"message": "Unauthorized access!"}
-    except Exception as e:
+    except Exception:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Internal Server Error!"}
     try:
-        item = {'owner_mail': existing_user['mail'], 'name': name, 'state': state, 'description': description, 'timestamp': timestamp, 'image': ''}
+        item = {
+            'owner_mail': existing_user['mail'],
+            'name': name,
+            'state': state,
+            'description': description,
+            'timestamp': timestamp,
+            'image': ''
+        }
         insert_result = await items.insert_one(item)
         document_id = str(insert_result.inserted_id)
-    except Exception as e:
+    except Exception:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Unable to upload the item in the database"}
     try:
         image_bytes = await image.read()
         upload_result = cloudinary.uploader.upload(image_bytes, public_id=document_id)
         cloudinary_url = upload_result.get("secure_url")
-    except Exception as e:
+    except Exception:
         await items.find_one_and_delete({"_id": insert_result.inserted_id})
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Unable to upload the image!"}
     try:
         await items.update_one({"_id": ObjectId(document_id)}, {"$set": {"image": cloudinary_url}})
-    except Exception as e:
+    except Exception:
         result = cloudinary.uploader.destroy(document_id)
         await items.find_one_and_delete({"_id": insert_result.inserted_id})
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Unable to update the item in the database!"}
-
 
     try:
         text_embedding = await get_text_embedding(description)
@@ -267,47 +337,148 @@ async def upload(request: Request, response: Response, name: str = Form(...), st
         else:
             upsert_found_item_description_in_pinecone_database(document_id, text_embedding)
             upsert_found_item_image_in_pinecone_database(document_id, image_embedding)
-
-    except Exception as e:
+    except Exception:
         result = cloudinary.uploader.destroy(document_id)
         await items.find_one_and_delete({"_id": insert_result.inserted_id})
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Unable to upload the item to AI matching"}
+
     try:
         if state:
             matched_ids = get_matched_found_items_id(text_embedding, image_embedding)
-            # Filter out any matches where the owner is the same as the current user
             filtered_matched_ids = []
             for matched_id in matched_ids:
                 matched_item = await items.find_one({'_id': ObjectId(matched_id)})
                 if matched_item and matched_item['owner_mail'] != existing_user['mail']:
                     filtered_matched_ids.append(matched_id)
-
             await items.update_one({"_id": ObjectId(document_id)}, {"$set": {"matches": filtered_matched_ids}})
-            # if existing_user['socket_id'] != '' and len(filtered_matched_ids) != 0:
-            #   await socket_server.emit('notification', data={"message": f"Your {item['name']} has {len(filtered_matched_ids)} new possible {"match" if len(filtered_matched_ids) == 1 else "matches"}"}, room=existing_user['socket_id'])
+            # Send Expo push notification to uploader if matches found
+            if existing_user.get('socket_id', '') and len(filtered_matched_ids) != 0:
+                send_expo_push_notification(
+                    existing_user['socket_id'],
+                    f"New Match for {item['name']}",
+                    f"Your {item['name']} has {len(filtered_matched_ids)} new possible {'match' if len(filtered_matched_ids) == 1 else 'matches'}"
+                )
         else:
             matched_ids = get_matched_lost_items_id(text_embedding, image_embedding)
             for matched_id in matched_ids:
                 temp_post = await items.find_one({'_id': ObjectId(matched_id)})
-                # Skip if the matched item belongs to the current user
                 if temp_post['owner_mail'] == existing_user['mail']:
                     continue
-
                 temp_user_mail = temp_post['owner_mail']
                 temp_user = await users.find_one({"mail": temp_user_mail})
-                owner_socket_id = temp_user['socket_id']
+                owner_push_token = temp_user.get('socket_id', '')
                 await items.update_one({"_id": ObjectId(matched_id)}, {"$push": {"matches": document_id}})
-                # if owner_socket_id != '':
-                #     await socket_server.emit('notification', data={
-                #         "message": f"Your {temp_post['name']} has 1 new possible match"},
-                #                              room=owner_socket_id)
-
-    except Exception as e:
+                # Send Expo push notification to matched item's owner
+                if owner_push_token:
+                    send_expo_push_notification(
+                        owner_push_token,
+                        f"New Match for {temp_post['name']}",
+                        f"Your {temp_post['name']} has 1 new possible match"
+                    )
+    except Exception:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Please Retry querying for matches!"}
 
     return {"message": "item uploaded successfully"}
+
+
+# @app.post('/upload')
+# async def upload(request: Request, response: Response, name: str = Form(...), state: bool = Form(...), description: str = Form(...), timestamp: int = Form(...), image: UploadFile = File(...)):
+#     req_headers = dict(request.headers)
+#     if 'auth_token' not in req_headers :
+#         response.status_code = status.HTTP_400_BAD_REQUEST
+#         return {"message": "Unauthorized Access!"}
+#
+#     auth_token = req_headers['auth_token']
+#     try:
+#         data = jwt.decode(auth_token, os.getenv('JWT_KEY'), algorithms=["HS256"])
+#     except Exception as e:
+#         response.status_code = status.HTTP_401_UNAUTHORIZED
+#         return {"message": "Unauthorized access!"}
+#
+#     try:
+#         existing_user = await users.find_one({'_id': ObjectId(data['_id'])})
+#         if existing_user is None:
+#             response.status_code = status.HTTP_401_UNAUTHORIZED
+#             return {"message": "Unauthorized access!"}
+#     except Exception as e:
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return {"message": "Internal Server Error!"}
+#     try:
+#         item = {'owner_mail': existing_user['mail'], 'name': name, 'state': state, 'description': description, 'timestamp': timestamp, 'image': ''}
+#         insert_result = await items.insert_one(item)
+#         document_id = str(insert_result.inserted_id)
+#     except Exception as e:
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return {"message": "Unable to upload the item in the database"}
+#     try:
+#         image_bytes = await image.read()
+#         upload_result = cloudinary.uploader.upload(image_bytes, public_id=document_id)
+#         cloudinary_url = upload_result.get("secure_url")
+#     except Exception as e:
+#         await items.find_one_and_delete({"_id": insert_result.inserted_id})
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return {"message": "Unable to upload the image!"}
+#     try:
+#         await items.update_one({"_id": ObjectId(document_id)}, {"$set": {"image": cloudinary_url}})
+#     except Exception as e:
+#         result = cloudinary.uploader.destroy(document_id)
+#         await items.find_one_and_delete({"_id": insert_result.inserted_id})
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return {"message": "Unable to update the item in the database!"}
+#
+#
+#     try:
+#         text_embedding = await get_text_embedding(description)
+#         image_embedding = await get_image_embedding(image_bytes)
+#         if state:
+#             upsert_lost_item_description_in_pinecone_database(document_id, text_embedding)
+#             upsert_lost_item_image_in_pinecone_database(document_id, image_embedding)
+#         else:
+#             upsert_found_item_description_in_pinecone_database(document_id, text_embedding)
+#             upsert_found_item_image_in_pinecone_database(document_id, image_embedding)
+#
+#     except Exception as e:
+#         result = cloudinary.uploader.destroy(document_id)
+#         await items.find_one_and_delete({"_id": insert_result.inserted_id})
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return {"message": "Unable to upload the item to AI matching"}
+#     try:
+#         if state:
+#             matched_ids = get_matched_found_items_id(text_embedding, image_embedding)
+#             # Filter out any matches where the owner is the same as the current user
+#             filtered_matched_ids = []
+#             for matched_id in matched_ids:
+#                 matched_item = await items.find_one({'_id': ObjectId(matched_id)})
+#                 if matched_item and matched_item['owner_mail'] != existing_user['mail']:
+#                     filtered_matched_ids.append(matched_id)
+#
+#             await items.update_one({"_id": ObjectId(document_id)}, {"$set": {"matches": filtered_matched_ids}})
+#             # if existing_user['socket_id'] != '' and len(filtered_matched_ids) != 0:
+#             #   await socket_server.emit('notification', data={"message": f"Your {item['name']} has {len(filtered_matched_ids)} new possible {"match" if len(filtered_matched_ids) == 1 else "matches"}"}, room=existing_user['socket_id'])
+#         else:
+#             matched_ids = get_matched_lost_items_id(text_embedding, image_embedding)
+#             for matched_id in matched_ids:
+#                 temp_post = await items.find_one({'_id': ObjectId(matched_id)})
+#                 # Skip if the matched item belongs to the current user
+#                 if temp_post['owner_mail'] == existing_user['mail']:
+#                     continue
+#
+#                 temp_user_mail = temp_post['owner_mail']
+#                 temp_user = await users.find_one({"mail": temp_user_mail})
+#                 owner_socket_id = temp_user['socket_id']
+#                 await items.update_one({"_id": ObjectId(matched_id)}, {"$push": {"matches": document_id}})
+#                 # if owner_socket_id != '':
+#                 #     await socket_server.emit('notification', data={
+#                 #         "message": f"Your {temp_post['name']} has 1 new possible match"},
+#                 #                              room=owner_socket_id)
+#
+#     except Exception as e:
+#         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+#         return {"message": "Please Retry querying for matches!"}
+#
+#     return {"message": "item uploaded successfully"}
 
 class GetProfileBody(BaseModel):
     mail: str

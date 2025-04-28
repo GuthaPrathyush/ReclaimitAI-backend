@@ -6,6 +6,7 @@ sentence-transformers~=4.0.1
 transformers
 motor~=3.7.0
 torch
+requests==2.31.0
 pillow
 python-dotenv~=1.0.1
 pydantic~=2.10.6
