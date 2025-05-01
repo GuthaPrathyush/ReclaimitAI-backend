@@ -23,6 +23,8 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from urllib.parse import unquote
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     await check_ttl_index()  # Ensure index exists before app starts
@@ -247,7 +249,6 @@ async def update_fcm_token(request: Request, response: Response, token_update: T
 
 
 
-import requests
 
 def send_expo_push_notification(expo_push_token, title, body, data=None):
     """
@@ -264,17 +265,21 @@ def send_expo_push_notification(expo_push_token, title, body, data=None):
         "https://exp.host/--/api/v2/push/send",
         json=message,
         headers={
-            "Accept": "application/json",
-            "Accept-encoding": "gzip, deflate",
             "Content-Type": "application/json",
         },
-        timeout=10
+        timeout=30
     )
     try:
         response.raise_for_status()
         return {"success": True, "response": response.json()}
     except Exception as e:
         return {"success": False, "error": str(e), "response": response.text}
+
+
+@app.get("/send-notifications/{user_id}")
+async def send_notifications(user_id:str):
+    print(unquote(user_id))
+    send_expo_push_notification(unquote(user_id), "testing the push notifications!", "Here is a push notification!")
 
 @app.post('/upload')
 async def upload(request: Request, response: Response, name: str = Form(...), state: bool = Form(...), description: str = Form(...), timestamp: int = Form(...), image: UploadFile = File(...)):
